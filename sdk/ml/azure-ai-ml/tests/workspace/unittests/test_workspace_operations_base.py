@@ -3,9 +3,10 @@ from unittest.mock import DEFAULT, Mock, patch
 import pytest
 from pytest_mock import MockFixture
 
-from azure.ai.ml._restclient.v2023_06_01_preview.models import (
+from azure.ai.ml._restclient.v2023_08_01_preview.models import (
     EncryptionKeyVaultUpdateProperties,
     EncryptionUpdateProperties,
+    ServerlessComputeSettings,
 )
 from azure.ai.ml._scope_dependent_operations import OperationScope
 from azure.ai.ml._utils.utils import camel_to_snake
@@ -36,6 +37,21 @@ def mock_workspace_operation_base(
     yield WorkspaceOperationsBase(
         operation_scope=mock_workspace_scope,
         service_client=mock_aml_services_2023_06_01_preview,
+        all_operations=mock_machinelearning_client._operation_container,
+        credentials=mock_credential,
+    )
+
+
+@pytest.fixture
+def mock_aug_2023_preview_workspace_operations_base(
+    mock_workspace_scope: OperationScope,
+    mock_aml_services_2023_08_01_preview: Mock,
+    mock_machinelearning_client: Mock,
+    mock_credential: Mock,
+) -> WorkspaceOperationsBase:
+    yield WorkspaceOperationsBase(
+        operation_scope=mock_workspace_scope,
+        service_client=mock_aml_services_2023_08_01_preview,
         all_operations=mock_machinelearning_client._operation_container,
         credentials=mock_credential,
     )
@@ -326,3 +342,14 @@ class TestWorkspaceOperation:
         mock_workspace_operation_base._default_workspace_name = None
         with pytest.raises(Exception):
             mock_workspace_operation_base._check_workspace_name(None)
+
+    def test_can_create_serverless_with_custom_subnet(
+        self, mock_aug_2023_preview_workspace_operations_base: WorkspaceOperationsBase, mocker: MockFixture
+    ) -> None:
+        mocker.patch("azure.ai.ml.operations.WorkspaceOperations.get", return_value=None)
+        mocker.patch(
+            "azure.ai.ml.operations._workspace_operations_base.WorkspaceOperationsBase._populate_arm_parameters",
+            return_value=({}, {}, {}),
+        )
+        mocker.patch("azure.ai.ml._arm_deployments.ArmDeploymentExecutor.deploy_resource", return_value=LROPoller)
+        mock_workspace_operation_base.begin_create(workspace=Workspace(name="name"))

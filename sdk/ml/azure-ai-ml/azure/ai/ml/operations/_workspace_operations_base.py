@@ -4,8 +4,8 @@
 
 # pylint: disable=protected-access
 
-from abc import ABC
 import time
+from abc import ABC
 from typing import Callable, Dict, Optional, Tuple
 
 from azure.ai.ml._arm_deployments import ArmDeploymentExecutor
@@ -22,9 +22,9 @@ from azure.ai.ml._utils._appinsights_utils import get_log_analytics_arm_id
 # from azure.ai.ml._telemetry import ActivityType, monitor_with_activity
 from azure.ai.ml._utils._logger_utils import OpsLogger
 from azure.ai.ml._utils._workspace_utils import (
-    get_generic_arm_resource_by_arm_id,
     delete_resource_by_arm_id,
     get_deployment_name,
+    get_generic_arm_resource_by_arm_id,
     get_name_for_dependent_resource,
     get_resource_and_group_name,
     get_resource_group_location,
@@ -700,6 +700,9 @@ class WorkspaceOperationsBase(ABC):
         if workspace._kind and workspace._kind.lower() == PROJECT_WORKSPACE_KIND:
             if workspace.workspace_hub:
                 _set_val(param["workspace_hub"], workspace.workspace_hub)
+
+        if workspace.serverless_compute_settings:
+            _set_val(param["serverless_compute_settings"], workspace.serverless_compute_settings._to_rest_object())
 
         resources_being_deployed[workspace.name] = (ArmConstants.WORKSPACE, None)
         return template, param, resources_being_deployed

@@ -1,12 +1,15 @@
-from unittest.mock import DEFAULT, Mock, patch
+from typing import Any, Dict, Tuple
+from unittest.mock import DEFAULT, MagicMock, Mock, patch
 
 import pytest
 from pytest_mock import MockFixture
 
-from azure.ai.ml._restclient.v2023_08_01_preview.models import (
+from azure.ai.ml._restclient.v2023_06_01_preview.models import (
     EncryptionKeyVaultUpdateProperties,
     EncryptionUpdateProperties,
-    ServerlessComputeSettings,
+)
+from azure.ai.ml._restclient.v2023_08_01_preview.models import (
+    ServerlessComputeSettings as RestServerlessComputeSettings,
 )
 from azure.ai.ml._scope_dependent_operations import OperationScope
 from azure.ai.ml._utils.utils import camel_to_snake
@@ -16,6 +19,7 @@ from azure.ai.ml.entities import (
     FeatureStore,
     IdentityConfiguration,
     ManagedIdentityConfiguration,
+    ServerlessComputeSettings,
     Workspace,
 )
 from azure.ai.ml.operations._workspace_operations_base import WorkspaceOperationsBase
@@ -346,10 +350,29 @@ class TestWorkspaceOperation:
     def test_can_create_serverless_with_custom_subnet(
         self, mock_aug_2023_preview_workspace_operations_base: WorkspaceOperationsBase, mocker: MockFixture
     ) -> None:
-        mocker.patch("azure.ai.ml.operations.WorkspaceOperations.get", return_value=None)
-        mocker.patch(
-            "azure.ai.ml.operations._workspace_operations_base.WorkspaceOperationsBase._populate_arm_parameters",
-            return_value=({}, {}, {}),
-        )
+        serverless_compute_settings = ServerlessComputeSettings(serverless_compute_custom_subnet="custom-subnet")
+        ws = Workspace(name="slcs", location="test", serverless_compute_settings=serverless_compute_settings)
+        spy = mocker.spy(WorkspaceOperationsBase, "_populate_arm_parameters")
+
+        mock_aug_2023_preview_workspace_operations_base.get = MagicMock(return_value=None)
         mocker.patch("azure.ai.ml._arm_deployments.ArmDeploymentExecutor.deploy_resource", return_value=LROPoller)
-        mock_workspace_operation_base.begin_create(workspace=Workspace(name="name"))
+        mock_aug_2023_preview_workspace_operations_base.begin_create(ws)
+        (template, param, _) = spy.spy_return
+        settings: RestServerlessComputeSettings = param["serverless_compute_settings"]["value"]
+        assert ServerlessComputeSettings._from_rest_object(settings) == serverless_compute_settings
+
+    def test_serverless_custom_subnet_with_no_public_ip_enabled_is_allowed(
+        self, mock_aug_2023_preview_workspace_operations_base: WorkspaceOperationsBase, mocker: MockFixture
+    ) -> None:
+        serverless_compute_settings = ServerlessComputeSettings(
+            serverless_compute_custom_subnet="custom-subnet", serverless_compute_no_public_ip=True
+        )
+        ws = Workspace(name="slcs", location="test", serverless_compute_settings=serverless_compute_settings)
+        spy = mocker.spy(WorkspaceOperationsBase, "_populate_arm_parameters")
+
+        mock_aug_2023_preview_workspace_operations_base.get = MagicMock(return_value=None)
+        mocker.patch("azure.ai.ml._arm_deployments.ArmDeploymentExecutor.deploy_resource", return_value=LROPoller)
+        mock_aug_2023_preview_workspace_operations_base.begin_create(ws)
+        (_, param, _) = spy.spy_return
+        settings: RestServerlessComputeSettings = param["serverless_compute_settings"]["value"]
+        assert ServerlessComputeSettings._from_rest_object(settings) == serverless_compute_settings

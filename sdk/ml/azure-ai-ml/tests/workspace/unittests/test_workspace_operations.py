@@ -1,13 +1,18 @@
-from unittest.mock import DEFAULT, Mock
+from unittest.mock import DEFAULT, MagicMock, Mock
 
 import pytest
-from azure.core.polling import LROPoller
 from pytest_mock import MockFixture
 
 from azure.ai.ml import load_workspace
 from azure.ai.ml._scope_dependent_operations import OperationScope
-from azure.ai.ml.entities import IdentityConfiguration, ManagedIdentityConfiguration, Workspace
+from azure.ai.ml.entities import (
+    IdentityConfiguration,
+    ManagedIdentityConfiguration,
+    ServerlessComputeSettings,
+    Workspace,
+)
 from azure.ai.ml.operations import WorkspaceOperations
+from azure.core.polling import LROPoller
 
 
 @pytest.fixture
@@ -18,13 +23,13 @@ def mock_credential() -> Mock:
 @pytest.fixture
 def mock_workspace_operation(
     mock_workspace_scope: OperationScope,
-    mock_aml_services_2023_06_01_preview: Mock,
+    mock_aml_services_2023_08_01_preview: Mock,
     mock_machinelearning_client: Mock,
     mock_credential: Mock,
 ) -> WorkspaceOperations:
     yield WorkspaceOperations(
         operation_scope=mock_workspace_scope,
-        service_client=mock_aml_services_2023_06_01_preview,
+        service_client=mock_aml_services_2023_08_01_preview,
         all_operations=mock_machinelearning_client._operation_container,
         credentials=mock_credential,
     )
@@ -153,3 +158,17 @@ class TestWorkspaceOperation:
         params_override = []
         wps = load_workspace("./tests/test_configs/workspace/workspace_with_hub.yaml", params_override=params_override)
         assert isinstance(wps.workspace_hub, str)
+
+    def test_create_workspace_with_serverless_custom_vnet(
+        self, mock_workspace_operation: WorkspaceOperations, mocker: MockFixture
+    ):
+        serverless_compute_settings = ServerlessComputeSettings(serverless_compute_custom_subnet="custom-subnet")
+        ws = Workspace(name="slcs", location="test", serverless_compute_settings=serverless_compute_settings)
+        spy = mocker.spy(WorkspaceOperations, "_populate_arm_parameters")
+
+        mock_workspace_operation.get = MagicMock(return_value=None)
+        mocker.patch("azure.ai.ml._arm_deployments.ArmDeploymentExecutor.deploy_resource", return_value=LROPoller)
+        mock_workspace_operation.begin_create(ws)
+        (template, param, _) = spy.spy_return
+        settings = param["serverless_compute_settings"]["value"]
+        assert ServerlessComputeSettings._from_rest_object(settings) == serverless_compute_settings
